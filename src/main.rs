@@ -1,5 +1,22 @@
-use std::{env, io};
-use tui::{backend::CrosstermBackend, Terminal};
+use std::{env, ffi::OsString, io, path::Path};
+use tui::{
+    backend::CrosstermBackend,
+    layout::{Alignment, Constraint, Direction, Layout},
+    style::{Color, Style},
+    text::Spans,
+    widgets::{Block, Borders, Paragraph},
+    Terminal,
+};
+
+fn scan_directory(path: &std::path::Path) -> Result<Vec<OsString>, std::io::Error> {
+    let contents = std::fs::read_dir(path)?;
+    Ok(contents
+        .map(|item| match item {
+            Ok(entry) => entry.file_name(),
+            Err(_) => panic!("oops"),
+        })
+        .collect())
+}
 
 fn main() -> Result<(), io::Error> {
     let args: Vec<String> = env::args().collect();
@@ -17,25 +34,43 @@ fn main() -> Result<(), io::Error> {
         crossterm::terminal::EnterAlternateScreen,
         crossterm::event::EnableMouseCapture
     )?;
+
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let text = vec![tui::text::Spans::from(args[1].clone())];
+    let text = scan_directory(Path::new(&args[1]))?;
+    let text: Vec<Spans> = text
+        .iter()
+        .map(|t| match t.clone().into_string() {
+            Ok(t_as_str) => Spans::from(t_as_str),
+            Err(_) => panic!("oops"),
+        })
+        .collect();
+
     loop {
         terminal.draw(|f| {
             let size = f.size();
-            let block = tui::widgets::Block::default()
-                .title(" Found logfiles ")
-                .borders(tui::widgets::Borders::ALL);
-            let paragraph = tui::widgets::Paragraph::new(text.clone())
-                .style(
-                    tui::style::Style::default()
-                        .bg(tui::style::Color::White)
-                        .fg(tui::style::Color::Black),
+
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
+                .split(size);
+
+            let paragraph = Paragraph::new("\nLogfiles | Logs | Settings")
+                .style(Style::default().bg(Color::White).fg(Color::Black))
+                .block(Block::default().borders(Borders::NONE))
+                .alignment(Alignment::Center);
+            f.render_widget(paragraph, chunks[0]);
+
+            let paragraph = Paragraph::new(text.clone())
+                .style(Style::default().bg(Color::White).fg(Color::Black))
+                .block(
+                    Block::default()
+                        .title(" Found logfiles ")
+                        .borders(Borders::ALL),
                 )
-                .block(block)
-                .alignment(tui::layout::Alignment::Left);
-            f.render_widget(paragraph, size);
+                .alignment(Alignment::Left);
+            f.render_widget(paragraph, chunks[1]);
         })?;
 
         if let crossterm::event::Event::Key(key) = crossterm::event::read()? {
