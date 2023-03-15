@@ -1,4 +1,4 @@
-use std::{env, ffi::OsString, io, path::Path};
+use std::{env, io, path::Path};
 use tui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout},
@@ -8,14 +8,17 @@ use tui::{
     Terminal,
 };
 
-fn scan_directory(path: &std::path::Path) -> Result<Vec<OsString>, std::io::Error> {
-    let contents = std::fs::read_dir(path)?;
-    Ok(contents
-        .map(|item| match item {
-            Ok(entry) => entry.file_name(),
-            Err(_) => panic!("oops"),
-        })
-        .collect())
+fn scan_directory(path: &std::path::Path) -> Result<Vec<String>, std::io::Error> {
+    let mut result: Vec<String> = Vec::new();
+    for item in std::fs::read_dir(path)? {
+        match item?.file_name().into_string() {
+            Ok(file) => if file.as_bytes()[0] != b'.' { result.push(file) },
+            Err(err_file) => return Err(io::Error::new(io::ErrorKind::Other, format!("filename is not Unicode, filename={:?}", err_file))),
+        }
+    }
+
+    result.sort();
+    Ok(result)
 }
 
 fn main() -> Result<(), io::Error> {
@@ -41,10 +44,7 @@ fn main() -> Result<(), io::Error> {
     let text = scan_directory(Path::new(&args[1]))?;
     let text: Vec<Spans> = text
         .iter()
-        .map(|t| match t.clone().into_string() {
-            Ok(t_as_str) => Spans::from(t_as_str),
-            Err(_) => panic!("oops"),
-        })
+        .map(|t| Spans::from(t.as_str()))
         .collect();
 
     loop {
