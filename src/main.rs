@@ -1,4 +1,4 @@
-use std::{env, io, path::Path, time::Duration};
+use std::{env, io, path::Path, time::Duration, collections::HashSet};
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Alignment, Constraint, Direction, Layout},
@@ -11,6 +11,7 @@ use tui::{
 struct App {
     items: Vec<String>,
     state: ListState,
+    loaded_items: HashSet<String>,
 }
 
 impl App {
@@ -18,9 +19,10 @@ impl App {
         let mut app = App {
             items: App::scan_directory(path)?,
             state: ListState::default(),
+            loaded_items: HashSet::new(),
         };
 
-        if app.items.len() > 0 {
+        if !app.items.is_empty() {
             app.state.select(Some(0));
         }
 
@@ -76,6 +78,17 @@ impl App {
         };
         self.state.select(Some(state));
     }
+
+    fn flip_current(&mut self) {
+        if let Some(selected) = self.state.selected() {
+            if self.loaded_items.contains(&self.items[selected]) {
+                self.loaded_items.remove(&self.items[selected]);
+            } else {
+                assert!(selected < self.items.len());
+                self.loaded_items.insert(self.items[selected].clone());
+            }
+        }
+    }
 }
 
 fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
@@ -96,7 +109,8 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .items
         .iter()
         .map(|i| {
-            ListItem::new(Span::from(i.clone()))
+            let loaded_marker = if app.loaded_items.contains(i) { "x" } else { " " };
+            ListItem::new(Span::from(format!("[{}] {}", loaded_marker, i)))
                 .style(Style::default().fg(Color::Black).bg(Color::White))
         })
         .collect();
@@ -145,6 +159,7 @@ fn main() -> Result<(), io::Error> {
                     crossterm::event::KeyCode::Char('k') => app.select_previous(),
                     crossterm::event::KeyCode::Down => app.select_next(),
                     crossterm::event::KeyCode::Up => app.select_previous(),
+                    crossterm::event::KeyCode::Enter => app.flip_current(),
                     _ => {}
                 }
             }
