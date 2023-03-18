@@ -1,4 +1,4 @@
-use std::{env, io, path::Path, time::Duration, collections::HashSet};
+use std::{collections::HashSet, env, io, path::Path, time::Duration};
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Alignment, Constraint, Direction, Layout},
@@ -7,6 +7,17 @@ use tui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame, Terminal,
 };
+
+use std::fs::File;
+use std::mem::size_of;
+use std::str::from_utf8;
+use std::time::Instant;
+use std::{fs, result, vec};
+
+use futures::executor::block_on;
+use tokio::io::AsyncReadExt;
+use tokio::join;
+use tokio::task::JoinSet;
 
 struct App {
     items: Vec<String>,
@@ -91,6 +102,165 @@ impl App {
     }
 }
 
+fn read_file_to_string(path: &String) -> String {
+    fs::read_to_string(path).expect("Should have been able to read the file")
+}
+
+async fn async_read_to_string(path: String) -> Vec<String> {
+    let res = tokio::fs::read_to_string(path).await.unwrap();
+    println!("load done");
+    let r = res.split('\n');
+    println!("split done");
+    vec![res]
+}
+
+async fn file_run() {
+    let mut futures: JoinSet<Vec<String>> = JoinSet::new();
+
+    loop {
+        let mut buffer = String::new();
+        io::stdin().read_line(&mut buffer).unwrap();
+        buffer.retain(|c| !c.is_whitespace());
+
+        if buffer == "done" {
+            break;
+        }
+
+        let path = Path::new(&buffer);
+
+        if path.exists() {
+            futures.spawn(async_read_to_string(buffer.clone()));
+            // read_file_to_string(buffer.clone());
+        }
+    }
+    println!("file input done, start reading");
+
+    while let Some(result) = futures.join_next().await {
+        let text: Vec<String> = result.unwrap();
+        println!("#lines: {}", text.len());
+    }
+}
+
+fn read_and_merge() -> Vec<String> {
+    const BUFFER_SIZE: usize = 500000;
+
+    let mut left_file = std::fs::File::open("testdata\\left.log").unwrap();
+    let mut right_file = std::fs::File::open("testdata\\right.log").unwrap();
+
+    let mut result: Vec<String> = Vec::new();
+
+    let mut left_rest: Option<String> = None;
+    let mut right_rest: Option<String> = None;
+
+    loop {
+        let mut left_buffer = [0; BUFFER_SIZE];
+        let left_ret = left_file.read(&mut left_buffer[..]);
+        let mut right_buffer = [0; BUFFER_SIZE];
+        let right_ret = right_file.read(&mut right_buffer[..]);
+
+        let (result_left, result_right) = (left_ret, right_ret);
+
+        if let Err(e) = result_right {
+            panic!("{}", e);
+        }
+        if let Err(e) = result_left {
+            panic!("{}", e);
+        }
+        let (result_left, result_right) = (result_left.unwrap(), result_right.unwrap());
+
+        if result_left == 0 && result_right == 0 {
+            return result;
+        } else if result_left == 0 {
+            let right_str: String = from_utf8(&right_buffer[0..result_right])
+                .unwrap()
+                .to_string();
+            let mut right_iter = right_str.split_inclusive('\n');
+            while let Some(item) = right_iter.next() {
+                let mut item: String = item.to_string();
+                if let Some(rest) = right_rest {
+                    item = rest + &item;
+                    right_rest = None;
+                }
+
+                if !item.is_empty() && item.chars().last().unwrap() == '\n' {
+                    result.push(item.to_string());
+                } else if !item.is_empty() {
+                    right_rest = Some(item.to_string());
+                }
+            }
+        } else if result_right == 0 {
+            let left_str: String = from_utf8(&left_buffer[0..result_left]).unwrap().to_string();
+            let mut left_iter = left_str.split_inclusive('\n');
+            while let Some(item) = left_iter.next() {
+                let mut item: String = item.to_string();
+                if let Some(rest) = left_rest {
+                    item = rest + &item;
+                    left_rest = None;
+                }
+
+                if !item.is_empty() && item.chars().last().unwrap() == '\n' {
+                    result.push(item.to_string());
+                } else if !item.is_empty() {
+                    left_rest = Some(item.to_string());
+                }
+            }
+        } else {
+            let left_str: String = from_utf8(&left_buffer[0..result_left]).unwrap().to_string();
+            let right_str: String = from_utf8(&right_buffer[0..result_right])
+                .unwrap()
+                .to_string();
+
+            let mut left_iter = left_str.split_inclusive('\n');
+            let mut right_iter = right_str.split_inclusive('\n');
+
+            let mut i: usize = 0;
+            let mut left_empty: bool = false;
+            let mut right_empty: bool = false;
+            loop {
+                if i % 2 == 0 {
+                    if let Some(item) = left_iter.next() {
+                        let mut item: String = item.to_string();
+                        if let Some(rest) = left_rest {
+                            item = rest + &item;
+                            left_rest = None;
+                        }
+
+                        if !item.is_empty() && item.chars().last().unwrap() == '\n' {
+                            result.push(item.to_string());
+                        } else if !item.is_empty() {
+                            left_rest = Some(item.to_string());
+                        }
+                    } else {
+                        left_empty = true;
+                    }
+                }
+                if i % 2 == 1 {
+                    if let Some(item) = right_iter.next() {
+                        let mut item: String = item.to_string();
+                        if let Some(rest) = right_rest {
+                            item = rest + &item;
+                            right_rest = None;
+                        }
+
+                        if !item.is_empty() && item.chars().last().unwrap() == '\n' {
+                            result.push(item.to_string());
+                        } else if !item.is_empty() {
+                            right_rest = Some(item.to_string());
+                        }
+                    } else {
+                        right_empty = true;
+                    }
+                }
+                if left_empty && right_empty {
+                    break;
+                } else {
+                    i += 1;
+                }
+            }
+        }
+    }
+}
+
 fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     let size = f.size();
 
@@ -109,7 +279,11 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .items
         .iter()
         .map(|i| {
-            let loaded_marker = if app.loaded_items.contains(i) { "x" } else { " " };
+            let loaded_marker = if app.loaded_items.contains(i) {
+                "x"
+            } else {
+                " "
+            };
             ListItem::new(Span::from(format!("[{}] {}", loaded_marker, i)))
                 .style(Style::default().fg(Color::Black).bg(Color::White))
         })
@@ -175,4 +349,74 @@ fn main() -> Result<(), io::Error> {
     terminal.show_cursor()?;
 
     Ok(())
+}
+
+fn whole_mem() -> Vec<String> {
+    let left_str = read_file_to_string(&"testdata\\left.log".to_string());
+    let right_str = read_file_to_string(&"testdata\\right.log".to_string());
+
+    let mut left_iter = left_str.split_inclusive('\n');
+    let mut right_iter = right_str.split_inclusive('\n');
+
+    let mut result: Vec<String> = Vec::new();
+
+    let mut i: usize = 0;
+    let mut left_empty: bool = false;
+    let mut right_empty: bool = false;
+    loop {
+        if i % 2 == 0 {
+            if let Some(item) = left_iter.next() {
+                if !item.is_empty() && item.chars().last().unwrap() == '\n' {
+                    result.push(item.to_string());
+                }
+            } else {
+                left_empty = true;
+            }
+        }
+        if i % 2 == 1 {
+            if let Some(item) = right_iter.next() {
+                if !item.is_empty() && item.chars().last().unwrap() == '\n' {
+                    result.push(item.to_string());
+                }
+            } else {
+                right_empty = true;
+            }
+        }
+        if left_empty && right_empty {
+            return result;
+        } else {
+            i += 1;
+        }
+    }
+}
+
+fn test(r: &Vec<String>) {
+    let rr: Vec<String> = r
+        .iter()
+        .filter_map(|it| {
+            if it != "Left\n" && it != "Right\n" {
+                Some(it.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+    println!("{:?}", rr);
+}
+
+fn main() {
+    // block_on(run());
+    // block_on(file_run());
+
+    println!("by blocks:");
+    let start = Instant::now();
+    let r = read_and_merge();
+    let duration = start.elapsed();
+    println!("{}, {:?}", r.len(), duration);
+
+    println!("\nall at once:");
+    let start = Instant::now();
+    let r = whole_mem();
+    let duration = start.elapsed();
+    println!("{}, {:?}", r.len(), duration);
 }
