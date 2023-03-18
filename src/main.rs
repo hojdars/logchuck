@@ -408,15 +408,26 @@ fn main() {
     // block_on(run());
     // block_on(file_run());
 
-    println!("by blocks:");
-    let start = Instant::now();
-    let r = read_and_merge();
-    let duration = start.elapsed();
-    println!("{}, {:?}", r.len(), duration);
+    // println!("by blocks:");
+    // let start = Instant::now();
+    // let r = read_and_merge();
+    // let duration = start.elapsed();
+    // println!("{}, {:?}", r.len(), duration);
 
-    println!("\nall at once:");
-    let start = Instant::now();
-    let r = whole_mem();
-    let duration = start.elapsed();
-    println!("{}, {:?}", r.len(), duration);
+    // println!("\nall at once:");
+    // let start = Instant::now();
+    // let r = whole_mem();
+    // let duration = start.elapsed();
+    // println!("{}, {:?}", r.len(), duration);
+
+    let text: String = "Hello Darkness\nMy old friend.".to_string();
+    let b = text.as_bytes();
+    println!("{:?}", b);
+
+    for it in b.split_inclusive(|c| *c == '\n' as u8) {
+        println!("{:?}", it);
+    }
+
+    let mut tb: Vec<u8> = Vec::new();
+    tb.append(&mut b.iter().cloned().collect());
 }
