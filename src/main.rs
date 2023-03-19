@@ -445,7 +445,30 @@ fn get_ith_line<'a>(text: &'a String, i: usize, line_breaks: &Vec<usize>) -> &'a
     }
 }
 
-fn main() {
+async fn load_file(path: String) -> (String, Vec<usize>) {
+    let text = read_file_to_string(&path);
+    let line_breaks: Vec<usize> = get_line_breaks(&text);
+    (text, line_breaks)
+}
+
+async fn load_files(files: Vec<String>) -> Vec<(String, Vec<usize>)> {
+    let mut futures: JoinSet<(String, Vec<usize>)> = JoinSet::new();
+    for file in files {
+        futures.spawn(load_file(file.clone()));
+    }
+
+    let mut result_vec: Vec<(String, Vec<usize>)> = Vec::new();
+
+    while let Some(result) = futures.join_next().await {
+        let text = result.unwrap();
+        result_vec.push(text);
+    }
+
+    result_vec
+}
+
+#[tokio::main()]
+async fn main() {
     // block_on(run());
     // block_on(file_run());
 
@@ -472,14 +495,14 @@ fn main() {
         println!(">{}<", get_ith_line(&text, i, &line_breaks));
     }
 
-    let left_str = read_file_to_string("testdata\\left.log".to_string());
-    println!("load done.");
-    let mut buffer = String::new();
-    io::stdin().read_line(&mut buffer).unwrap();
+    let r = block_on(load_files(vec![
+        "testdata\\left.log".to_string(),
+        "testdata\\right.log".to_string(),
+    ]));
 
-    let big_lbs: Vec<usize> = get_line_breaks(&left_str);
-    println!("line breaks calculated.");
-    println!(">{}<", get_ith_line(&left_str, 1000000, &big_lbs));
+    let (left_str, left_lbs) = &r[0];
+
+    println!("{}", get_ith_line(&left_str, 500000, &left_lbs));
 
     let mut buffer = String::new();
     io::stdin().read_line(&mut buffer).unwrap();
