@@ -432,32 +432,37 @@ fn get_line_breaks(text_str: &String) -> Vec<usize> {
     line_breaks
 }
 
-fn get_ith_line<'a>(text: &'a String, i: usize, line_breaks: &Vec<usize>) -> &'a str {
-    if line_breaks.len() < i + 1 {
+fn get_ith_line<'a>(i: usize, file: &'a FileWithLines) -> &'a str {
+    if file.line_breaks.len() < i + 1 {
         panic!("too much");
     }
 
-    let res = &text[line_breaks[i]..line_breaks[i + 1]];
+    let res = &file.text[file.line_breaks[i]..file.line_breaks[i + 1]];
     if res.chars().last() == Some('\n') {
-        return &text[line_breaks[i]..line_breaks[i + 1] - 1];
+        return &file.text[file.line_breaks[i]..file.line_breaks[i + 1] - 1];
     } else {
         res
     }
 }
 
-async fn load_file(path: String) -> (String, Vec<usize>) {
-    let text = read_file_to_string(&path);
-    let line_breaks: Vec<usize> = get_line_breaks(&text);
-    (text, line_breaks)
+struct FileWithLines {
+    text: String,
+    line_breaks: Vec<usize>,
 }
 
-async fn load_files(files: Vec<String>) -> Vec<(String, Vec<usize>)> {
-    let mut futures: JoinSet<(String, Vec<usize>)> = JoinSet::new();
+async fn load_file(path: String) -> FileWithLines {
+    let text = read_file_to_string(&path);
+    let line_breaks: Vec<usize> = get_line_breaks(&text);
+    FileWithLines { text, line_breaks }
+}
+
+async fn load_files(files: Vec<String>) -> Vec<FileWithLines> {
+    let mut futures: JoinSet<FileWithLines> = JoinSet::new();
     for file in files {
         futures.spawn(load_file(file.clone()));
     }
 
-    let mut result_vec: Vec<(String, Vec<usize>)> = Vec::new();
+    let mut result_vec: Vec<FileWithLines> = Vec::new();
 
     while let Some(result) = futures.join_next().await {
         let text = result.unwrap();
@@ -491,19 +496,19 @@ async fn main() {
     let line_breaks: Vec<usize> = get_line_breaks(&text);
     println!("{:?}", line_breaks);
 
-    for i in 0..line_breaks.len() - 1 {
-        println!(">{}<", get_ith_line(&text, i, &line_breaks));
+    let spooky_file = FileWithLines { text, line_breaks };
+
+    for i in 0..spooky_file.line_breaks.len() - 1 {
+        println!(">{}<", get_ith_line(i, &spooky_file));
     }
 
     let r = block_on(load_files(vec![
-        "testdata\\left.log".to_string(),
-        "testdata\\right.log".to_string(),
+        "testdata\\long-left.log".to_string(),
+        "testdata\\long-right.log".to_string(),
     ]));
 
-    let (left_str, left_lbs) = &r[0];
+    let first_file: &FileWithLines = &r[0];
 
-    println!("{}", get_ith_line(&left_str, 500000, &left_lbs));
-
-    let mut buffer = String::new();
-    io::stdin().read_line(&mut buffer).unwrap();
+    println!("{}", get_ith_line(5000, &first_file));
+    println!("{}", first_file.line_breaks.len());
 }
