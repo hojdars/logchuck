@@ -432,22 +432,24 @@ fn get_line_breaks(text_str: &String) -> Vec<usize> {
     line_breaks
 }
 
-fn get_ith_line<'a>(i: usize, file: &'a FileWithLines) -> &'a str {
-    if file.line_breaks.len() < i + 1 {
-        panic!("too much");
-    }
-
-    let res = &file.text[file.line_breaks[i]..file.line_breaks[i + 1]];
-    if res.chars().last() == Some('\n') {
-        return &file.text[file.line_breaks[i]..file.line_breaks[i + 1] - 1];
-    } else {
-        res
-    }
-}
-
 struct FileWithLines {
     text: String,
     line_breaks: Vec<usize>,
+}
+
+impl FileWithLines {
+    fn get_ith_line<'a>(&'a self, i: usize) -> &'a str {
+        if self.line_breaks.len() < i + 1 {
+            panic!("too much");
+        }
+
+        let res = &self.text[self.line_breaks[i]..self.line_breaks[i + 1]];
+        if res.chars().last() == Some('\n') {
+            return &self.text[self.line_breaks[i]..self.line_breaks[i + 1] - 1];
+        } else {
+            res
+        }
+    }
 }
 
 async fn load_file(path: String) -> FileWithLines {
@@ -499,7 +501,7 @@ async fn main() {
     let spooky_file = FileWithLines { text, line_breaks };
 
     for i in 0..spooky_file.line_breaks.len() - 1 {
-        println!(">{}<", get_ith_line(i, &spooky_file));
+        println!(">{}<", spooky_file.get_ith_line(i));
     }
 
     let r = block_on(load_files(vec![
@@ -509,6 +511,6 @@ async fn main() {
 
     let first_file: &FileWithLines = &r[0];
 
-    println!("{}", get_ith_line(5000, &first_file));
+    println!("{}", first_file.get_ith_line(5000));
     println!("{}", first_file.line_breaks.len());
 }
