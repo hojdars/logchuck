@@ -437,7 +437,12 @@ fn get_ith_line<'a>(text: &'a String, i: usize, line_breaks: &Vec<usize>) -> &'a
         panic!("too much");
     }
 
-    &text[line_breaks[i]..line_breaks[i + 1]]
+    let res = &text[line_breaks[i]..line_breaks[i + 1]];
+    if res.chars().last() == Some('\n') {
+        return &text[line_breaks[i]..line_breaks[i + 1] - 1];
+    } else {
+        res
+    }
 }
 
 fn main() {
@@ -463,7 +468,19 @@ fn main() {
     let line_breaks: Vec<usize> = get_line_breaks(&text);
     println!("{:?}", line_breaks);
 
-    for i in 0..5 {
+    for i in 0..line_breaks.len() - 1 {
         println!(">{}<", get_ith_line(&text, i, &line_breaks));
     }
+
+    let left_str = read_file_to_string("testdata\\left.log".to_string());
+    println!("load done.");
+    let mut buffer = String::new();
+    io::stdin().read_line(&mut buffer).unwrap();
+
+    let big_lbs: Vec<usize> = get_line_breaks(&left_str);
+    println!("line breaks calculated.");
+    println!(">{}<", get_ith_line(&left_str, 1000000, &big_lbs));
+
+    let mut buffer = String::new();
+    io::stdin().read_line(&mut buffer).unwrap();
 }
