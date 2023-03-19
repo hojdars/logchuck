@@ -404,6 +404,42 @@ fn test(r: &Vec<String>) {
     println!("{:?}", rr);
 }
 
+fn text_as_bytes() {
+    let text: String = "Hello Darkness\nMy old friend.".to_string();
+    let b = text.as_bytes();
+    println!("{:?}", b);
+
+    for it in b.split_inclusive(|c| *c == '\n' as u8) {
+        println!("{:?}", it);
+    }
+
+    let mut tb: Vec<u8> = Vec::new();
+    tb.append(&mut b.iter().cloned().collect());
+}
+
+fn get_line_breaks(text_str: &String) -> Vec<usize> {
+    let mut line_breaks: Vec<usize> = Vec::new();
+    line_breaks.push(0);
+    let mut find_text = &text_str[0..];
+    while let Some(next) = find_text.find('\n') {
+        match line_breaks.last() {
+            None => line_breaks.push(next + 1),
+            Some(l) => line_breaks.push(l + next + 1),
+        };
+        find_text = &find_text[next + 1..];
+    }
+    line_breaks.push(text_str.len() - 1);
+    line_breaks
+}
+
+fn get_ith_line<'a>(text: &'a String, i: usize, line_breaks: &Vec<usize>) -> &'a str {
+    if line_breaks.len() < i + 1 {
+        panic!("too much");
+    }
+
+    &text[line_breaks[i]..line_breaks[i + 1]]
+}
+
 fn main() {
     // block_on(run());
     // block_on(file_run());
@@ -420,14 +456,14 @@ fn main() {
     // let duration = start.elapsed();
     // println!("{}, {:?}", r.len(), duration);
 
-    let text: String = "Hello Darkness\nMy old friend.".to_string();
-    let b = text.as_bytes();
-    println!("{:?}", b);
+    let text: String = String::from(
+        "We did the slice.\nIt was the spooky slice.\nNow our swings have some spice.\nSpoooooky.\nSlice.",
+    );
 
-    for it in b.split_inclusive(|c| *c == '\n' as u8) {
-        println!("{:?}", it);
+    let line_breaks: Vec<usize> = get_line_breaks(&text);
+    println!("{:?}", line_breaks);
+
+    for i in 0..5 {
+        println!(">{}<", get_ith_line(&text, i, &line_breaks));
     }
-
-    let mut tb: Vec<u8> = Vec::new();
-    tb.append(&mut b.iter().cloned().collect());
 }
