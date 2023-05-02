@@ -1,4 +1,4 @@
-use std::fs;
+use std::{cmp::min, fs};
 use tokio::task::JoinSet;
 
 #[cfg(test)]
@@ -9,7 +9,7 @@ pub struct FileWithLines {
     line_breaks: Vec<usize>,
 }
 
-impl FileWithLines {
+impl<'text> FileWithLines {
     pub fn get_ith_line(&self, i: usize) -> &str {
         if self.line_breaks.len() < i + 1 {
             panic!("too much");
@@ -43,6 +43,23 @@ impl FileWithLines {
         }
 
         result_vec
+    }
+
+    pub fn get_lines(&self, from: usize, to: usize) -> Vec<String> {
+        let mut result: Vec<String> = Vec::new();
+
+        let from = min(from, self.len());
+        let to = min(to, self.len());
+
+        if to <= from || from > self.len() - 1 {
+            return Vec::new();
+        }
+
+        for i in from..to {
+            result.push(self.get_ith_line(i).to_string());
+        }
+
+        result
     }
 }
 
