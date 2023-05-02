@@ -1,3 +1,4 @@
+use log::*;
 use std::{collections::HashSet, io, path::Path, time::Duration};
 
 use futures::executor::block_on;
@@ -55,6 +56,7 @@ struct App {
 
 impl App {
     fn new(path: &std::path::Path) -> Result<App, std::io::Error> {
+        info!("App::new - new App");
         let file_list = App::scan_directory(path)?;
         let mut app = App {
             common: Common::new(file_list.clone()),
@@ -164,11 +166,12 @@ impl App {
                     to_load.push(lf.clone());
                 }
 
+                info!("App::load_files - preparing to load files");
                 let file_futures = Box::pin(FileWithLines::from_files(to_load));
-
                 self.app_state = AppState::TextView(ViewMenu {
                     files: block_on(file_futures),
                 });
+                info!("App::load_files - files loaded");
 
                 if let AppState::TextView(view) = &self.app_state {
                     if !view.files.is_empty() {
