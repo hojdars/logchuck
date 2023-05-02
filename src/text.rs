@@ -5,14 +5,16 @@ use tokio::task::JoinSet;
 mod test;
 
 pub struct FileWithLines {
-    pub text: String,
-    pub line_breaks: Vec<usize>,
+    text: String,
+    line_breaks: Vec<usize>,
 }
 
 impl FileWithLines {
     pub fn get_ith_line(&self, i: usize) -> &str {
         if self.line_breaks.len() < i + 1 {
             panic!("too much");
+        } else if self.line_breaks.len() == i + 1 {
+            return &self.text[self.line_breaks[i]..];
         }
 
         let res = &self.text[self.line_breaks[i]..self.line_breaks[i + 1]];
@@ -22,26 +24,31 @@ impl FileWithLines {
             res
         }
     }
-}
 
-pub async fn load_files(files: Vec<String>) -> Vec<FileWithLines> {
-    let mut futures: JoinSet<FileWithLines> = JoinSet::new();
-    for file in files {
-        futures.spawn(load_file(file.clone()));
+    pub fn len(&self) -> usize {
+        self.line_breaks.len() - 2
     }
 
-    let mut result_vec: Vec<FileWithLines> = Vec::new();
+    pub async fn from_files(files: Vec<String>) -> Vec<FileWithLines> {
+        let mut futures: JoinSet<FileWithLines> = JoinSet::new();
+        for file in files {
+            futures.spawn(load_file(file.clone()));
+        }
 
-    while let Some(result) = futures.join_next().await {
-        let text = result.unwrap();
-        result_vec.push(text);
+        let mut result_vec: Vec<FileWithLines> = Vec::new();
+
+        while let Some(result) = futures.join_next().await {
+            let text = result.unwrap();
+            result_vec.push(text);
+        }
+
+        result_vec
     }
-
-    result_vec
 }
 
 fn read_file_to_string(path: &String) -> String {
-    fs::read_to_string(path).expect("Should have been able to read the file")
+    fs::read_to_string(path)
+        .expect(format!("Should have been able to read the file={}", path).as_str())
 }
 
 fn get_line_breaks(text_str: &String) -> Vec<usize> {
