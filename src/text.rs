@@ -10,14 +10,14 @@ pub struct FileWithLines {
 }
 
 impl FileWithLines {
-    pub fn get_ith_line<'a>(&'a self, i: usize) -> &'a str {
+    pub fn get_ith_line(&self, i: usize) -> &str {
         if self.line_breaks.len() < i + 1 {
             panic!("too much");
         }
 
         let res = &self.text[self.line_breaks[i]..self.line_breaks[i + 1]];
-        if res.chars().last() == Some('\n') {
-            return &self.text[self.line_breaks[i]..self.line_breaks[i + 1] - 1];
+        if res.ends_with('\n') {
+            &self.text[self.line_breaks[i]..self.line_breaks[i + 1] - 1]
         } else {
             res
         }
