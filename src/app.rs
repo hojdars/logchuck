@@ -170,8 +170,16 @@ impl App {
                     files: block_on(file_futures),
                 });
 
-                // TODO: Set common.items to the lines in the view.
-                //          Do this by implementing get_lines(from: usize, to: usize) for FileWithLines
+                if let AppState::TextView(view) = &self.app_state {
+                    if !view.files.is_empty() {
+                        self.common.items = view.files[0].get_lines(0, view.files[0].len());
+                        self.common.state = ListState::default();
+
+                        if !self.common.items.is_empty() {
+                            self.common.state.select(Some(0));
+                        }
+                    }
+                }
             }
         }
     }
