@@ -1,10 +1,6 @@
-use std::{env, io, vec};
-
-use futures::executor::block_on;
+use std::{env, io};
 
 mod text;
-use text::load_files;
-use text::FileWithLines;
 
 mod app;
 use app::run_app;
@@ -20,18 +16,5 @@ async fn main() -> Result<(), io::Error> {
     }
 
     run_app(&args[1])?;
-
-    // testing playground below
-
-    let r = block_on(load_files(vec![
-        "testdata\\long-left.log".to_string(),
-        "testdata\\long-right.log".to_string(),
-    ]));
-
-    let first_file: &FileWithLines = &r[0];
-
-    println!("{}", first_file.get_ith_line(5000));
-    println!("{}", first_file.line_breaks.len());
-
     Ok(())
 }
