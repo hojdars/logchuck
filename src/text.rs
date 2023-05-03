@@ -1,9 +1,12 @@
+use crate::mergeline::Line;
+use crate::timestamp::*;
 use std::{cmp::min, fs};
 use tokio::task::JoinSet;
 
 #[cfg(test)]
 mod test;
 
+#[derive(Debug)]
 pub struct FileWithLines {
     text: String,
     line_breaks: Vec<usize>,
@@ -45,20 +48,19 @@ impl<'text> FileWithLines {
         result_vec
     }
 
-    pub fn get_lines(&self, from: usize, to: usize) -> Vec<String> {
-        let mut result: Vec<String> = Vec::new();
-
-        let from = min(from, self.len());
-        let to = min(to, self.len());
-
-        if to <= from || from > self.len() - 1 {
-            return Vec::new();
+    pub fn get_annotated_lines(&self, source_file_index: usize) -> Vec<Line> {
+        let mut result: Vec<Line> = Vec::new();
+        for i in 0..self.len() {
+            let line = self.get_ith_line(i);
+            let timestamp = parse_timestamp_utc(&get_timestamp_from_line(line).unwrap())
+                .unwrap()
+                .timestamp_micros();
+            result.push(Line {
+                timestamp,
+                source_file: source_file_index,
+                index: i,
+            });
         }
-
-        for i in from..to {
-            result.push(self.get_ith_line(i).to_string());
-        }
-
         result
     }
 }
@@ -79,7 +81,10 @@ fn get_line_breaks(text_str: &String) -> Vec<usize> {
         };
         find_text = &find_text[next + 1..];
     }
-    line_breaks.push(text_str.len() - 1);
+    if !text_str.ends_with("\n") {
+        line_breaks.push(text_str.len());
+    }
+    line_breaks.push(text_str.len() + 1);
     line_breaks
 }
 

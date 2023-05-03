@@ -5,9 +5,9 @@ mod test;
 
 #[derive(Debug, Clone)]
 pub struct Line {
-    pub timestamp: u64,
-    pub source_file: String,
-    pub index: u64,
+    pub timestamp: i64,
+    pub source_file: usize,
+    pub index: usize,
 }
 
 pub fn merge(left: &Vec<Line>, right: &Vec<Line>) -> Vec<Line> {
