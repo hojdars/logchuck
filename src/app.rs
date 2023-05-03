@@ -1,5 +1,12 @@
 use log::*;
-use std::{cmp::min, collections::HashSet, io, path::Path, str::FromStr, time::Duration};
+use std::{
+    cmp::min,
+    collections::{HashSet, VecDeque},
+    io,
+    path::Path,
+    str::FromStr,
+    time::Duration,
+};
 
 use futures::executor::block_on;
 use tui::{
@@ -16,15 +23,17 @@ use super::mergeline::Line;
 use super::text::FileWithLines;
 
 struct Common {
-    items: Vec<String>,
+    items: VecDeque<String>,
     state: ListState,
+    absolute_index: usize,
 }
 
 impl Common {
     fn new(it: Vec<String>) -> Common {
         Common {
-            items: it,
+            items: it.into(),
             state: ListState::default(),
+            absolute_index: 0,
         }
     }
 }
@@ -150,31 +159,84 @@ impl App {
     }
 
     fn select_next(&mut self) {
-        let state = match self.common.state.selected() {
-            Some(i) => {
+        match &mut self.app_state {
+            AppState::FileList(_) => {
+                let mut i = self.common.state.selected().unwrap();
                 if i >= self.common.items.len() - 1 {
-                    0
+                    i = 0
                 } else {
-                    i + 1
+                    i += 1
                 }
+                self.common.state.select(Some(i));
             }
-            None => panic!("no file selected, this should not happen"),
-        };
-        self.common.state.select(Some(state));
+            AppState::TextView(view) => {
+                let mut i = self.common.state.selected().unwrap();
+                if i == self.common.items.len() - 1 {
+                    let first_not_loaded = self.common.absolute_index + 1;
+                    let new_lines = view.get_lines(first_not_loaded, first_not_loaded + 1);
+                    if new_lines.is_empty() {
+                        // wrap
+                        i = 0;
+                        self.common.absolute_index = 0;
+                        self.common.items =
+                            view.get_lines(0, self.terminal_size.height as usize).into();
+                    } else {
+                        assert_eq!(new_lines.len(), 1);
+                        self.common.items.push_back(new_lines[0].clone());
+                        self.common.items.pop_front();
+                        self.common.absolute_index += 1;
+                    }
+                } else {
+                    i += 1;
+                    self.common.absolute_index += 1;
+                }
+                self.common.state.select(Some(i));
+            }
+        }
+        assert!(self.common.items.len() <= self.terminal_size.height as usize);
     }
 
     fn select_previous(&mut self) {
-        let state = match self.common.state.selected() {
-            Some(i) => {
+        match &mut self.app_state {
+            AppState::FileList(_) => {
+                let mut i = self.common.state.selected().unwrap();
                 if i == 0 {
-                    self.common.items.len() - 1
+                    i = self.common.items.len() - 1;
                 } else {
-                    i - 1
+                    i -= 1;
                 }
+                self.common.state.select(Some(i));
             }
-            None => panic!("no file selected, this should not happen"),
-        };
-        self.common.state.select(Some(state));
+            AppState::TextView(view) => {
+                let mut i = self.common.state.selected().unwrap();
+                if i == 0 {
+                    if self.common.absolute_index == 0 {
+                        // wrap
+                        self.common.absolute_index = view.all_lines.len() - 1;
+                        i = self.terminal_size.height as usize - 1;
+                        self.common.items = view
+                            .get_lines(
+                                view.all_lines.len() - self.terminal_size.height as usize,
+                                view.all_lines.len(),
+                            )
+                            .into();
+                    } else {
+                        // just load previous
+                        let new_lines = view
+                            .get_lines(self.common.absolute_index - 1, self.common.absolute_index);
+                        assert_eq!(new_lines.len(), 1);
+                        self.common.items.pop_back();
+                        self.common.items.push_front(new_lines[0].clone());
+                        self.common.absolute_index -= 1;
+                    }
+                } else {
+                    i -= 1;
+                    self.common.absolute_index = self.common.absolute_index.saturating_sub(1);
+                }
+                self.common.state.select(Some(i));
+            }
+        }
+        assert!(self.common.items.len() <= self.terminal_size.height as usize);
     }
 
     fn flip_current(&mut self) {
@@ -232,8 +294,10 @@ impl App {
 
                 if let AppState::TextView(view) = &self.app_state {
                     if !view.files.is_empty() {
-                        self.common.items = view.get_lines(0, self.terminal_size.height as usize);
+                        self.common.items =
+                            view.get_lines(0, self.terminal_size.height.into()).into();
                         self.common.state = ListState::default();
+                        self.common.absolute_index = 0;
 
                         if !self.common.items.is_empty() {
                             self.common.state.select(Some(0));
@@ -246,7 +310,7 @@ impl App {
 
     fn go_to_file_list(&mut self) {
         self.app_state = AppState::FileList(FileListMenu::new());
-        self.common.items = self.file_list.clone();
+        self.common.items = self.file_list.clone().into();
         self.common.state = ListState::default();
 
         if !self.common.items.is_empty() {
@@ -269,42 +333,37 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .alignment(Alignment::Center);
     f.render_widget(paragraph, chunks[0]);
 
-    let mut list_items: Vec<ListItem> = Vec::new();
+    app.terminal_size = chunks[1];
 
-    match &mut app.app_state {
-        AppState::FileList(file_list) => {
-            list_items = app
-                .common
-                .items
-                .iter()
-                .map(|i| {
-                    let loaded_marker = if file_list.loaded_items.contains(&App::to_abs_path(i)) {
-                        "x"
-                    } else {
-                        " "
-                    };
-                    ListItem::new(Span::from(format!(
-                        "[{}] {}",
-                        loaded_marker,
-                        String::from_str(Path::new(i).file_name().unwrap().to_str().unwrap())
-                            .unwrap()
-                    )))
+    let list_items: Vec<ListItem> = match &mut app.app_state {
+        AppState::FileList(file_list) => app
+            .common
+            .items
+            .iter()
+            .map(|i| {
+                let loaded_marker = if file_list.loaded_items.contains(&App::to_abs_path(i)) {
+                    "x"
+                } else {
+                    " "
+                };
+                ListItem::new(Span::from(format!(
+                    "[{}] {}",
+                    loaded_marker,
+                    String::from_str(Path::new(i).file_name().unwrap().to_str().unwrap()).unwrap()
+                )))
+                .style(Style::default().fg(Color::Black).bg(Color::White))
+            })
+            .collect(),
+        AppState::TextView(_) => app
+            .common
+            .items
+            .iter()
+            .map(|i| {
+                ListItem::new(Span::from(String::from(i)))
                     .style(Style::default().fg(Color::Black).bg(Color::White))
-                })
-                .collect();
-        }
-        AppState::TextView(_) => {
-            list_items = app
-                .common
-                .items
-                .iter()
-                .map(|i| {
-                    ListItem::new(Span::from(String::from(i)))
-                        .style(Style::default().fg(Color::Black).bg(Color::White))
-                })
-                .collect();
-        }
-    }
+            })
+            .collect(),
+    };
 
     let list = List::new(list_items)
         .block(
