@@ -213,13 +213,15 @@ impl App {
                     if self.common.absolute_index == 0 {
                         // wrap
                         self.common.absolute_index = view.all_lines.len() - 1;
-                        i = self.terminal_size.height as usize - 1;
-                        self.common.items = view
-                            .get_lines(
-                                view.all_lines.len() - self.terminal_size.height as usize,
-                                view.all_lines.len(),
-                            )
-                            .into();
+                        i = min(
+                            self.terminal_size.height as usize - 1,
+                            view.all_lines.len() - 1,
+                        );
+                        let from = view
+                            .all_lines
+                            .len()
+                            .saturating_sub(self.terminal_size.height as usize);
+                        self.common.items = view.get_lines(from, view.all_lines.len()).into();
                     } else {
                         // just load previous
                         let new_lines = view
@@ -322,13 +324,19 @@ impl App {
 fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     let size = f.size();
 
+    // solarized: https://ethanschoonover.com/solarized/
+    let fg_color = Color::Rgb(147, 161, 161);
+    let bg_color = Color::Rgb(0, 43, 54);
+    let fg_accent_color = Color::Rgb(181, 137, 0);
+    let bg_accent_color = Color::Rgb(7, 54, 66);
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
         .split(size);
 
     let paragraph = Paragraph::new("\nLogfiles | Logs | Settings")
-        .style(Style::default().bg(Color::White).fg(Color::Black))
+        .style(Style::default().bg(bg_color).fg(fg_color))
         .block(Block::default().borders(Borders::BOTTOM))
         .alignment(Alignment::Center);
     f.render_widget(paragraph, chunks[0]);
@@ -351,7 +359,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
                     loaded_marker,
                     String::from_str(Path::new(i).file_name().unwrap().to_str().unwrap()).unwrap()
                 )))
-                .style(Style::default().fg(Color::Black).bg(Color::White))
+                .style(Style::default().fg(fg_color).bg(bg_color))
             })
             .collect(),
         AppState::TextView(_) => app
@@ -360,7 +368,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
             .iter()
             .map(|i| {
                 ListItem::new(Span::from(String::from(i)))
-                    .style(Style::default().fg(Color::Black).bg(Color::White))
+                    .style(Style::default().fg(fg_color).bg(bg_color))
             })
             .collect(),
     };
@@ -369,9 +377,9 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .block(
             Block::default()
                 .borders(Borders::NONE)
-                .style(Style::default().bg(Color::White)),
+                .style(Style::default().bg(bg_color)),
         )
-        .highlight_style(Style::default().bg(Color::LightBlue));
+        .highlight_style(Style::default().fg(fg_accent_color).bg(bg_accent_color));
 
     f.render_stateful_widget(list, chunks[1], &mut app.common.state);
 }
@@ -402,7 +410,8 @@ pub fn run_app(folder_to_run: &String) -> Result<(), io::Error> {
                     crossterm::event::KeyCode::Char('g') => app.load_files(),
                     crossterm::event::KeyCode::Down => app.select_next(),
                     crossterm::event::KeyCode::Up => app.select_previous(),
-                    crossterm::event::KeyCode::Enter => app.flip_current(),
+                    crossterm::event::KeyCode::Char(' ') => app.flip_current(),
+                    crossterm::event::KeyCode::Enter => app.load_files(),
                     crossterm::event::KeyCode::Backspace => app.go_to_file_list(),
                     _ => {}
                 }
