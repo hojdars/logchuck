@@ -2,10 +2,10 @@ use log::*;
 use log4rs;
 use std::{env, io};
 
-mod text;
-
 mod app;
 use app::run_app;
+mod text;
+mod timestamp;
 
 #[tokio::main()]
 async fn main() -> Result<(), io::Error> {
