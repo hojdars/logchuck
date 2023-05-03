@@ -4,6 +4,7 @@ use std::{env, io};
 
 mod app;
 use app::run_app;
+mod mergeline;
 mod text;
 mod timestamp;
 
