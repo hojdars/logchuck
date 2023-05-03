@@ -1,5 +1,5 @@
 use log::*;
-use std::{collections::HashSet, io, path::Path, str::FromStr, time::Duration};
+use std::{cmp::min, collections::HashSet, io, path::Path, str::FromStr, time::Duration};
 
 use futures::executor::block_on;
 use tui::{
@@ -11,6 +11,8 @@ use tui::{
     Frame, Terminal,
 };
 
+use super::mergeline::merge;
+use super::mergeline::Line;
 use super::text::FileWithLines;
 
 struct Common {
@@ -41,6 +43,50 @@ impl FileListMenu {
 
 struct ViewMenu {
     files: Vec<FileWithLines>,
+    all_lines: Vec<Line>,
+}
+
+impl ViewMenu {
+    fn new(files: Vec<FileWithLines>) -> ViewMenu {
+        let mut res = ViewMenu {
+            files,
+            all_lines: Vec::new(),
+        };
+
+        for i in 0..res.files.len() {
+            let file_lines: Vec<Line> = res.files[i].get_annotated_lines(i);
+            res.all_lines = merge(&res.all_lines, &file_lines);
+        }
+
+        info!(
+            "ViewMenu::new - lines merged, total count={}",
+            res.all_lines.len()
+        );
+
+        res
+    }
+
+    fn get_lines(&self, from: usize, to: usize) -> Vec<String> {
+        let mut result: Vec<String> = Vec::new();
+
+        let from = min(from, self.all_lines.len());
+        let to = min(to, self.all_lines.len());
+
+        if to <= from || from > self.all_lines.len() - 1 {
+            return Vec::new();
+        }
+
+        for i in from..to {
+            let line = &self.all_lines[i];
+            result.push(
+                self.files[line.source_file]
+                    .get_ith_line(line.index)
+                    .to_string(),
+            );
+        }
+
+        result
+    }
 }
 
 enum AppState {
@@ -52,16 +98,18 @@ struct App {
     common: Common,
     app_state: AppState,
     file_list: Vec<String>,
+    terminal_size: tui::layout::Rect,
 }
 
 impl App {
-    fn new(path: &std::path::Path) -> Result<App, std::io::Error> {
+    fn new(path: &std::path::Path, size: tui::layout::Rect) -> Result<App, std::io::Error> {
         info!("App::new - new App");
         let file_list = App::scan_directory(path)?;
         let mut app = App {
             common: Common::new(file_list.clone()),
             app_state: AppState::FileList(FileListMenu::new()),
             file_list,
+            terminal_size: size,
         };
 
         if !app.common.items.is_empty() {
@@ -176,14 +224,15 @@ impl App {
 
                 info!("App::load_files - preparing to load files");
                 let file_futures = Box::pin(FileWithLines::from_files(to_load));
-                self.app_state = AppState::TextView(ViewMenu {
-                    files: block_on(file_futures),
-                });
-                info!("App::load_files - files loaded");
+                let files = block_on(file_futures);
+
+                info!("App::load_files - {} files loaded", files.len());
+
+                self.app_state = AppState::TextView(ViewMenu::new(files));
 
                 if let AppState::TextView(view) = &self.app_state {
                     if !view.files.is_empty() {
-                        self.common.items = view.files[0].get_lines(0, view.files[0].len());
+                        self.common.items = view.get_lines(0, self.terminal_size.height as usize);
                         self.common.state = ListState::default();
 
                         if !self.common.items.is_empty() {
@@ -244,15 +293,16 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
                 })
                 .collect();
         }
-        AppState::TextView(text_view) => {
-            for f in &text_view.files {
-                for i in 0..f.len() {
-                    list_items.push(
-                        ListItem::new(Span::from(String::from(f.get_ith_line(i))))
-                            .style(Style::default().fg(Color::Black).bg(Color::White)),
-                    );
-                }
-            }
+        AppState::TextView(_) => {
+            list_items = app
+                .common
+                .items
+                .iter()
+                .map(|i| {
+                    ListItem::new(Span::from(String::from(i)))
+                        .style(Style::default().fg(Color::Black).bg(Color::White))
+                })
+                .collect();
         }
     }
 
@@ -279,7 +329,7 @@ pub fn run_app(folder_to_run: &String) -> Result<(), io::Error> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app: App = App::new(Path::new(folder_to_run))?;
+    let mut app: App = App::new(Path::new(folder_to_run), terminal.size()?)?;
 
     loop {
         terminal.draw(|f| ui(f, &mut app))?;
