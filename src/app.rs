@@ -1,6 +1,6 @@
 use log::*;
 use std::{
-    cmp::{max, min},
+    cmp::min,
     collections::{HashSet, VecDeque},
     io,
     path::Path,
@@ -355,6 +355,38 @@ impl App {
             AppState::FileList(_) => {}
         }
     }
+
+    fn home(&mut self) {
+        match &mut self.app_state {
+            AppState::TextView(view) => {
+                let mut new_items = view.get_lines(0, self.terminal_size.height as usize);
+                while new_items.len() < self.terminal_size.height as usize {
+                    new_items.push("~".to_string());
+                }
+                self.common.items = new_items.into();
+                self.common.absolute_index = 0;
+                self.common.state.select(Some(0));
+            }
+            AppState::FileList(_) => {}
+        }
+    }
+
+    fn end(&mut self) {
+        match &mut self.app_state {
+            AppState::TextView(view) => {
+                let new_to: usize = view.all_lines.len();
+                let new_from: usize = new_to.saturating_sub(self.terminal_size.height as usize);
+                let mut new_items = view.get_lines(new_from, new_to);
+                while new_items.len() < self.terminal_size.height as usize {
+                    new_items.push("~".to_string());
+                }
+                self.common.items = new_items.into();
+                self.common.absolute_index = new_to - 1;
+                self.common.state.select(Some(self.common.items.len() - 1));
+            }
+            AppState::FileList(_) => {}
+        }
+    }
 }
 
 fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
@@ -451,6 +483,8 @@ pub fn run_app(folder_to_run: &String) -> Result<(), io::Error> {
                     crossterm::event::KeyCode::Backspace => app.go_to_file_list(),
                     crossterm::event::KeyCode::PageUp => app.page_up(),
                     crossterm::event::KeyCode::PageDown => app.page_down(),
+                    crossterm::event::KeyCode::Home => app.home(),
+                    crossterm::event::KeyCode::End => app.end(),
                     _ => {}
                 }
             }
