@@ -28,11 +28,11 @@ pub fn get_timestamp_from_line(line: &str) -> Result<String, LineError> {
         Some(text) => timestamp.push_str(text),
         None => return Err(LineError {}),
     }
-    timestamp.push_str(" ");
+    timestamp.push(' ');
     match chunks.next() {
         Some(text) => timestamp.push_str(text),
         None => return Err(LineError {}),
     }
 
-    return Ok(timestamp);
+    Ok(timestamp)
 }

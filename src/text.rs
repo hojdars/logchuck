@@ -1,6 +1,6 @@
 use crate::mergeline::Line;
 use crate::timestamp::*;
-use std::{cmp::min, fs};
+use std::fs;
 use tokio::task::JoinSet;
 
 #[cfg(test)]
@@ -81,7 +81,7 @@ fn get_line_breaks(text_str: &String) -> Vec<usize> {
         };
         find_text = &find_text[next + 1..];
     }
-    if !text_str.ends_with("\n") {
+    if !text_str.ends_with('\n') {
         line_breaks.push(text_str.len());
     }
     line_breaks.push(text_str.len() + 1);

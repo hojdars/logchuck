@@ -1,5 +1,4 @@
 use log::*;
-use log4rs;
 use std::{env, io};
 
 mod app;
