@@ -1,6 +1,6 @@
 use log::*;
 use std::{
-    cmp::min,
+    cmp::{max, min},
     collections::{HashSet, VecDeque},
     io,
     path::Path,
@@ -229,7 +229,7 @@ impl App {
                         assert_eq!(new_lines.len(), 1);
                         self.common.items.pop_back();
                         self.common.items.push_front(new_lines[0].clone());
-                        self.common.absolute_index -= 1;
+                        self.common.absolute_index = self.common.absolute_index.saturating_sub(1);
                     }
                 } else {
                     i -= 1;
@@ -300,7 +300,6 @@ impl App {
                             view.get_lines(0, self.terminal_size.height.into()).into();
                         self.common.state = ListState::default();
                         self.common.absolute_index = 0;
-
                         if !self.common.items.is_empty() {
                             self.common.state.select(Some(0));
                         }
@@ -317,6 +316,52 @@ impl App {
 
         if !self.common.items.is_empty() {
             self.common.state.select(Some(0));
+        }
+    }
+
+    fn page_down(&mut self) {
+        match &mut self.app_state {
+            AppState::TextView(view) => {
+                let new_from = min(
+                    view.all_lines.len(),
+                    self.common.absolute_index + self.terminal_size.height as usize / 2,
+                );
+                let new_end = new_from + self.terminal_size.height as usize;
+                let new_items = view.get_lines(new_from, new_end);
+                if new_items.is_empty() {
+                    return;
+                }
+                self.common.items = new_items.into();
+                self.common.absolute_index = new_from;
+                self.common.state.select(Some(min(
+                    self.common.state.selected().unwrap(),
+                    self.common.items.len(),
+                )));
+            }
+            AppState::FileList(_) => {}
+        }
+    }
+
+    fn page_up(&mut self) {
+        match &mut self.app_state {
+            AppState::TextView(view) => {
+                let new_from = self
+                    .common
+                    .absolute_index
+                    .saturating_sub(self.terminal_size.height as usize / 2);
+                let new_end = new_from + self.terminal_size.height as usize;
+                let new_items = view.get_lines(new_from, new_end);
+                if new_items.is_empty() {
+                    return;
+                }
+                self.common.items = new_items.into();
+                self.common.absolute_index = new_from;
+                self.common.state.select(Some(min(
+                    self.common.state.selected().unwrap(),
+                    self.common.items.len(),
+                )));
+            }
+            AppState::FileList(_) => {}
         }
     }
 }
@@ -413,6 +458,8 @@ pub fn run_app(folder_to_run: &String) -> Result<(), io::Error> {
                     crossterm::event::KeyCode::Char(' ') => app.flip_current(),
                     crossterm::event::KeyCode::Enter => app.load_files(),
                     crossterm::event::KeyCode::Backspace => app.go_to_file_list(),
+                    crossterm::event::KeyCode::PageUp => app.page_up(),
+                    crossterm::event::KeyCode::PageDown => app.page_down(),
                     _ => {}
                 }
             }
