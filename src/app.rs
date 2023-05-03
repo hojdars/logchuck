@@ -12,9 +12,9 @@ use futures::executor::block_on;
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Alignment, Constraint, Direction, Layout},
-    style::{Color, Style},
-    text::Span,
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    style::{Color, Modifier, Style},
+    text::{Span, Spans},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Tabs},
     Frame, Terminal,
 };
 
@@ -404,11 +404,29 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
         .split(size);
 
-    let paragraph = Paragraph::new("\nLogfiles | Logs | Settings")
-        .style(Style::default().bg(bg_color).fg(fg_color))
+    let titles_text: Vec<String> = vec!["Files".to_string(), "Log".to_string()];
+    let titles: Vec<Spans> = titles_text
+        .iter()
+        .map(|t| {
+            Spans::from(Span::styled(
+                t,
+                Style::default().fg(fg_color).add_modifier(Modifier::BOLD),
+            ))
+        })
+        .collect();
+
+    let selected_tab: usize = match app.app_state {
+        AppState::FileList(_) => 0,
+        AppState::TextView(_) => 1,
+    };
+
+    let tabs = Tabs::new(titles)
         .block(Block::default().borders(Borders::BOTTOM))
-        .alignment(Alignment::Center);
-    f.render_widget(paragraph, chunks[0]);
+        .select(selected_tab)
+        .style(Style::default().bg(bg_color).fg(fg_color))
+        .highlight_style(Style::default().bg(bg_accent_color).fg(fg_accent_color));
+
+    f.render_widget(tabs, chunks[0]);
 
     app.terminal_size = chunks[1];
 
