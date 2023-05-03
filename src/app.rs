@@ -175,11 +175,7 @@ impl App {
                     let first_not_loaded = self.common.absolute_index + 1;
                     let new_lines = view.get_lines(first_not_loaded, first_not_loaded + 1);
                     if new_lines.is_empty() {
-                        // wrap
-                        i = 0;
-                        self.common.absolute_index = 0;
-                        self.common.items =
-                            view.get_lines(0, self.terminal_size.height as usize).into();
+                        return; // no wrap
                     } else {
                         assert_eq!(new_lines.len(), 1);
                         self.common.items.push_back(new_lines[0].clone());
@@ -211,19 +207,8 @@ impl App {
                 let mut i = self.common.state.selected().unwrap();
                 if i == 0 {
                     if self.common.absolute_index == 0 {
-                        // wrap
-                        self.common.absolute_index = view.all_lines.len() - 1;
-                        i = min(
-                            self.terminal_size.height as usize - 1,
-                            view.all_lines.len() - 1,
-                        );
-                        let from = view
-                            .all_lines
-                            .len()
-                            .saturating_sub(self.terminal_size.height as usize);
-                        self.common.items = view.get_lines(from, view.all_lines.len()).into();
+                        return; // no wrap
                     } else {
-                        // just load previous
                         let new_lines = view
                             .get_lines(self.common.absolute_index - 1, self.common.absolute_index);
                         assert_eq!(new_lines.len(), 1);
@@ -327,9 +312,12 @@ impl App {
                     self.common.absolute_index + self.terminal_size.height as usize / 2,
                 );
                 let new_end = new_from + self.terminal_size.height as usize;
-                let new_items = view.get_lines(new_from, new_end);
+                let mut new_items = view.get_lines(new_from, new_end);
                 if new_items.is_empty() {
                     return;
+                }
+                while new_items.len() < self.terminal_size.height as usize {
+                    new_items.push("~".to_string());
                 }
                 self.common.items = new_items.into();
                 self.common.absolute_index = new_from;
@@ -350,9 +338,12 @@ impl App {
                     .absolute_index
                     .saturating_sub(self.terminal_size.height as usize / 2);
                 let new_end = new_from + self.terminal_size.height as usize;
-                let new_items = view.get_lines(new_from, new_end);
+                let mut new_items = view.get_lines(new_from, new_end);
                 if new_items.is_empty() {
                     return;
+                }
+                while new_items.len() < self.terminal_size.height as usize {
+                    new_items.push("~".to_string());
                 }
                 self.common.items = new_items.into();
                 self.common.absolute_index = new_from;
