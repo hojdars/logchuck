@@ -13,14 +13,22 @@ async fn main() -> Result<(), io::Error> {
     info!("main - start");
 
     let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "wrong number of arguments, expected 1 argument = path to a folder to read contents of",
-        ));
-    }
 
-    run_app(&args[1])?;
+    let path: String = match args.len() {
+        1 => std::env::current_dir()
+            .unwrap()
+            .as_os_str()
+            .to_str()
+            .unwrap()
+            .to_string(),
+        2 => args[1].clone(),
+        _ => {
+            eprintln!("wrong number of arguments, options:\n    1 arguments = read from current working directory\n    1 argument = path to folder to read from");
+            return Ok(());
+        }
+    };
+
+    run_app(&path)?;
 
     info!("main - end");
     Ok(())

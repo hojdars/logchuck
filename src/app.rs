@@ -331,6 +331,7 @@ impl App {
     }
 
     fn page_up(&mut self) {
+        // TODO: Bug - Doing 'End' (or scrolling to the end) and then pressing Page-Up jumps wrongly.
         match &mut self.app_state {
             AppState::TextView(view) => {
                 let new_from = self
