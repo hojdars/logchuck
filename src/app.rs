@@ -1,5 +1,5 @@
 use log::*;
-use std::{collections::HashSet, io, path::Path, time::Duration};
+use std::{collections::HashSet, io, path::Path, str::FromStr, time::Duration};
 
 use futures::executor::block_on;
 use tui::{
@@ -74,10 +74,18 @@ impl App {
     fn scan_directory(path: &std::path::Path) -> Result<Vec<String>, std::io::Error> {
         let mut result: Vec<String> = Vec::new();
         for item in std::fs::read_dir(path)? {
-            match item?.file_name().into_string() {
+            let item_path = item?.path();
+            if !item_path.is_file() || item_path.file_name().is_none() {
+                continue;
+            }
+            match item_path.file_name().unwrap().to_os_string().into_string() {
                 Ok(file) => {
                     if file.as_bytes()[0] != b'.' {
-                        result.push(file)
+                        let fullpath = path
+                            .join(std::path::Path::new(&file))
+                            .canonicalize()
+                            .unwrap();
+                        result.push(fullpath.as_os_str().to_os_string().into_string().unwrap())
                     }
                 }
                 Err(err_file) => {
@@ -226,8 +234,13 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
                     } else {
                         " "
                     };
-                    ListItem::new(Span::from(format!("[{}] {}", loaded_marker, i)))
-                        .style(Style::default().fg(Color::Black).bg(Color::White))
+                    ListItem::new(Span::from(format!(
+                        "[{}] {}",
+                        loaded_marker,
+                        String::from_str(Path::new(i).file_name().unwrap().to_str().unwrap())
+                            .unwrap()
+                    )))
+                    .style(Style::default().fg(Color::Black).bg(Color::White))
                 })
                 .collect();
         }
