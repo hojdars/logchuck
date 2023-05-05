@@ -1,5 +1,6 @@
 use crate::mergeline::Line;
 use crate::timestamp::*;
+use chrono::ParseError;
 use std::fs;
 use tokio::task::JoinSet;
 
@@ -48,20 +49,19 @@ impl<'text> FileWithLines {
         result_vec
     }
 
-    pub fn get_annotated_lines(&self, source_file_index: usize) -> Vec<Line> {
+    pub fn get_annotated_lines(&self, source_file_index: usize) -> Result<Vec<Line>, LineError> {
         let mut result: Vec<Line> = Vec::new();
         for i in 0..self.len() {
             let line = self.get_ith_line(i);
-            let timestamp = parse_timestamp_utc(&get_timestamp_from_line(line).unwrap())
-                .unwrap()
-                .timestamp_micros();
+            let timestamp =
+                parse_timestamp_utc(&get_timestamp_from_line(line)?)?.timestamp_micros();
             result.push(Line {
                 timestamp,
                 source_file: source_file_index,
                 index: i,
             });
         }
-        result
+        Ok(result)
     }
 }
 
