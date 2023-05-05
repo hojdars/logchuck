@@ -1,3 +1,4 @@
+use chrono::ParseError;
 use log::*;
 use std::{
     cmp::min,
@@ -11,12 +12,14 @@ use std::{
 use futures::executor::block_on;
 use tui::{
     backend::{Backend, CrosstermBackend},
-    layout::{Alignment, Constraint, Direction, Layout},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Tabs},
     Frame, Terminal,
 };
+
+use crate::timestamp::LineError;
 
 use super::mergeline::merge;
 use super::mergeline::Line;
@@ -56,14 +59,14 @@ struct ViewMenu {
 }
 
 impl ViewMenu {
-    fn new(files: Vec<FileWithLines>) -> ViewMenu {
+    fn new(files: Vec<FileWithLines>) -> Result<ViewMenu, LineError> {
         let mut res = ViewMenu {
             files,
             all_lines: Vec::new(),
         };
 
         for i in 0..res.files.len() {
-            let file_lines: Vec<Line> = res.files[i].get_annotated_lines(i);
+            let file_lines: Vec<Line> = res.files[i].get_annotated_lines(i)?;
             res.all_lines = merge(&res.all_lines, &file_lines);
         }
 
@@ -72,7 +75,7 @@ impl ViewMenu {
             res.all_lines.len()
         );
 
-        res
+        Ok(res)
     }
 
     fn get_lines(&self, from: usize, to: usize) -> Vec<String> {
@@ -108,6 +111,7 @@ struct App {
     app_state: AppState,
     file_list: Vec<String>,
     terminal_size: tui::layout::Rect,
+    error: Option<String>,
 }
 
 impl App {
@@ -119,6 +123,7 @@ impl App {
             app_state: AppState::FileList(FileListMenu::new()),
             file_list,
             terminal_size: size,
+            error: None,
         };
 
         if !app.common.items.is_empty() {
@@ -190,11 +195,6 @@ impl App {
             }
         }
         assert!(self.common.items.len() <= self.terminal_size.height as usize);
-        trace!(
-            "i = {} / height = {}",
-            self.common.state.selected().unwrap(),
-            self.terminal_size.height
-        );
     }
 
     fn select_previous(&mut self) {
@@ -229,11 +229,6 @@ impl App {
             }
         }
         assert!(self.common.items.len() <= self.terminal_size.height as usize);
-        trace!(
-            "i = {} / height = {}",
-            self.common.state.selected().unwrap(),
-            self.terminal_size.height
-        );
     }
 
     fn flip_current(&mut self) {
@@ -287,7 +282,16 @@ impl App {
 
                 info!("App::load_files - {} files loaded", files.len());
 
-                self.app_state = AppState::TextView(ViewMenu::new(files));
+                self.app_state = match ViewMenu::new(files) {
+                    Ok(new_state) => AppState::TextView(new_state),
+                    Err(err) => {
+                        self.error = Some(format!(
+                            "App::load_files - cannot load files, error={}",
+                            err
+                        ));
+                        return;
+                    }
+                };
 
                 if let AppState::TextView(view) = &self.app_state {
                     if !view.files.is_empty() {
@@ -398,6 +402,10 @@ impl App {
             AppState::FileList(_) => {}
         }
     }
+
+    fn clear_popup(&mut self) {
+        self.error = None
+    }
 }
 
 fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
@@ -496,6 +504,20 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .highlight_style(Style::default().fg(fg_accent_color).bg(bg_accent_color));
 
     f.render_stateful_widget(list, chunks[1], &mut app.common.state);
+
+    if let Some(error_text) = &app.error {
+        let block = Block::default().title("Popup").borders(Borders::ALL);
+        let area = centered_rect(60, 20, size);
+        f.render_widget(tui::widgets::Clear, area); //this clears out the background
+
+        let text = error_text.to_owned() + "\n\nPress 'Esc' to close this popup";
+
+        let paragraph = Paragraph::new(text.clone())
+            .style(Style::default().bg(bg_accent_color).fg(fg_accent_color))
+            .block(block)
+            .alignment(Alignment::Left);
+        f.render_widget(paragraph, area);
+    }
 }
 
 pub fn run_app(folder_to_run: &String) -> Result<(), io::Error> {
@@ -531,6 +553,7 @@ pub fn run_app(folder_to_run: &String) -> Result<(), io::Error> {
                     crossterm::event::KeyCode::PageDown => app.page_down(),
                     crossterm::event::KeyCode::Home => app.home(),
                     crossterm::event::KeyCode::End => app.end(),
+                    crossterm::event::KeyCode::Esc => app.clear_popup(),
                     _ => {}
                 }
             }
@@ -546,4 +569,32 @@ pub fn run_app(folder_to_run: &String) -> Result<(), io::Error> {
     terminal.show_cursor()?;
 
     Ok(())
+}
+
+/// Taken from TUI examples: https://github.com/fdehau/tui-rs/blob/v0.19.0/examples/popup.rs
+/// helper function to create a centered rect using up certain percentage of the available rect `r`
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(
+            [
+                Constraint::Percentage((100 - percent_y) / 2),
+                Constraint::Percentage(percent_y),
+                Constraint::Percentage((100 - percent_y) / 2),
+            ]
+            .as_ref(),
+        )
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(
+            [
+                Constraint::Percentage((100 - percent_x) / 2),
+                Constraint::Percentage(percent_x),
+                Constraint::Percentage((100 - percent_x) / 2),
+            ]
+            .as_ref(),
+        )
+        .split(popup_layout[1])[1]
 }
