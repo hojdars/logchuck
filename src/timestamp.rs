@@ -1,11 +1,8 @@
 #[cfg(test)]
 mod test;
 
-use chrono::format::ParseError;
 use chrono::{DateTime, FixedOffset};
 use std::fmt;
-
-use crate::mergeline::Line;
 
 #[derive(Debug, Clone)]
 pub struct LineError;

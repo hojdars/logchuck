@@ -6,14 +6,17 @@ fn load_file_get_ith_line() {
     let line_breaks: Vec<usize> = get_line_breaks(&text);
 
     let spooky_file = FileWithLines { text, line_breaks };
-    assert_eq!("We did the slice.", spooky_file.get_ith_line(0));
-    assert_eq!("It was the spooky slice.", spooky_file.get_ith_line(1));
-    assert_eq!("Slice.", spooky_file.get_ith_line(4));
+    assert_eq!("We did the slice.", spooky_file.get_ith_line(0).unwrap());
+    assert_eq!(
+        "It was the spooky slice.",
+        spooky_file.get_ith_line(1).unwrap()
+    );
+    assert_eq!("Slice.", spooky_file.get_ith_line(4).unwrap());
 
     assert_eq!(spooky_file.len(), 5);
 
     for i in 0..spooky_file.len() {
-        assert!(spooky_file.get_ith_line(i) != "");
+        assert!(spooky_file.get_ith_line(i).unwrap() != "");
     }
 }
 
@@ -25,7 +28,8 @@ fn annotated_lines_test() {
     assert_eq!(spooky_file.len(), 3);
 
     let res = spooky_file.get_annotated_lines(0);
-    assert_eq!(res.len(), 3);
+    assert!(res.is_ok());
+    assert_eq!(res.unwrap().len(), 3);
 }
 
 #[test]
