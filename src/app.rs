@@ -1,4 +1,3 @@
-use chrono::ParseError;
 use log::*;
 use std::{
     cmp::min,
@@ -93,6 +92,7 @@ impl ViewMenu {
             result.push(
                 self.files[line.source_file]
                     .get_ith_line(line.index)
+                    .unwrap()
                     .to_string(),
             );
         }
@@ -512,7 +512,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
         let text = error_text.to_owned() + "\n\nPress 'Esc' to close this popup";
 
-        let paragraph = Paragraph::new(text.clone())
+        let paragraph = Paragraph::new(text)
             .style(Style::default().bg(bg_accent_color).fg(fg_accent_color))
             .block(block)
             .alignment(Alignment::Left);

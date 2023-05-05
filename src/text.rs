@@ -1,6 +1,5 @@
 use crate::mergeline::Line;
 use crate::timestamp::*;
-use chrono::ParseError;
 use std::fs;
 use tokio::task::JoinSet;
 
@@ -14,18 +13,18 @@ pub struct FileWithLines {
 }
 
 impl<'text> FileWithLines {
-    pub fn get_ith_line(&self, i: usize) -> &str {
-        if self.line_breaks.len() < i + 1 {
-            panic!("too much");
-        } else if self.line_breaks.len() == i + 1 {
-            return &self.text[self.line_breaks[i]..];
+    pub fn get_ith_line(&self, i: usize) -> Result<&str, LineError> {
+        match self.line_breaks.len().cmp(&(i + 1)) {
+            std::cmp::Ordering::Less => return Err(LineError {}),
+            std::cmp::Ordering::Equal => return Ok(&self.text[self.line_breaks[i]..]),
+            std::cmp::Ordering::Greater => {}
         }
 
         let res = &self.text[self.line_breaks[i]..self.line_breaks[i + 1]];
         if res.ends_with('\n') {
-            &self.text[self.line_breaks[i]..self.line_breaks[i + 1] - 1]
+            Ok(&self.text[self.line_breaks[i]..self.line_breaks[i + 1] - 1])
         } else {
-            res
+            Ok(res)
         }
     }
 
@@ -52,7 +51,7 @@ impl<'text> FileWithLines {
     pub fn get_annotated_lines(&self, source_file_index: usize) -> Result<Vec<Line>, LineError> {
         let mut result: Vec<Line> = Vec::new();
         for i in 0..self.len() {
-            let line = self.get_ith_line(i);
+            let line = self.get_ith_line(i)?;
             let timestamp =
                 parse_timestamp_utc(&get_timestamp_from_line(line)?)?.timestamp_micros();
             result.push(Line {
@@ -67,7 +66,7 @@ impl<'text> FileWithLines {
 
 fn read_file_to_string(path: &String) -> String {
     fs::read_to_string(path)
-        .expect(format!("Should have been able to read the file={}", path).as_str())
+        .unwrap_or_else(|_| panic!("Should have been able to read the file={}", path))
 }
 
 fn get_line_breaks(text_str: &String) -> Vec<usize> {
