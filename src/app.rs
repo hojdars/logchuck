@@ -190,6 +190,11 @@ impl App {
             }
         }
         assert!(self.common.items.len() <= self.terminal_size.height as usize);
+        trace!(
+            "i = {} / height = {}",
+            self.common.state.selected().unwrap(),
+            self.terminal_size.height
+        );
     }
 
     fn select_previous(&mut self) {
@@ -224,6 +229,11 @@ impl App {
             }
         }
         assert!(self.common.items.len() <= self.terminal_size.height as usize);
+        trace!(
+            "i = {} / height = {}",
+            self.common.state.selected().unwrap(),
+            self.terminal_size.height
+        );
     }
 
     fn flip_current(&mut self) {
@@ -401,8 +411,25 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
+        .constraints([Constraint::Length(2), Constraint::Min(0)].as_ref())
         .split(size);
+
+    let bl = Block::default()
+        .borders(Borders::NONE)
+        .style(Style::default().bg(bg_color).fg(fg_color));
+    f.render_widget(bl, chunks[0]);
+
+    let mid_menu_row = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Length(1)].as_ref())
+        .split(chunks[0]);
+    assert_eq!(mid_menu_row.len(), 2);
+
+    let mid_menu_center = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(10), Constraint::Min(0)].as_ref())
+        .split(mid_menu_row[1]);
+    assert_eq!(mid_menu_center.len(), 2);
 
     let titles_text: Vec<String> = vec!["Files".to_string(), "Log".to_string()];
     let titles: Vec<Spans> = titles_text
@@ -421,12 +448,12 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     };
 
     let tabs = Tabs::new(titles)
-        .block(Block::default().borders(Borders::BOTTOM))
+        .block(Block::default().borders(Borders::NONE))
         .select(selected_tab)
         .style(Style::default().bg(bg_color).fg(fg_color))
         .highlight_style(Style::default().bg(bg_accent_color).fg(fg_accent_color));
 
-    f.render_widget(tabs, chunks[0]);
+    f.render_widget(tabs, mid_menu_center[1]);
 
     app.terminal_size = chunks[1];
 
@@ -463,7 +490,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     let list = List::new(list_items)
         .block(
             Block::default()
-                .borders(Borders::NONE)
+                .borders(Borders::TOP)
                 .style(Style::default().bg(bg_color)),
         )
         .highlight_style(Style::default().fg(fg_accent_color).bg(bg_accent_color));
