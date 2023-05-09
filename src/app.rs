@@ -416,6 +416,8 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     let bg_color = Color::Rgb(0, 43, 54);
     let fg_accent_color = Color::Rgb(181, 137, 0);
     let bg_accent_color = Color::Rgb(7, 54, 66);
+    let error_red_color = Color::Rgb(220, 50, 47);
+    let warn_yellow_color = Color::Rgb(181, 137, 0);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -489,8 +491,16 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
             .items
             .iter()
             .map(|i| {
-                ListItem::new(Span::from(String::from(i)))
-                    .style(Style::default().fg(fg_color).bg(bg_color))
+                let style: Style;
+                let line = String::from(i);
+                if line.contains("ERROR") {
+                    style = Style::default().fg(error_red_color).bg(bg_color);
+                } else if line.contains("WARN") {
+                    style = Style::default().fg(warn_yellow_color).bg(bg_color);
+                } else {
+                    style = Style::default().fg(fg_color).bg(bg_color);
+                }
+                ListItem::new(Span::from(line)).style(style)
             })
             .collect(),
     };
