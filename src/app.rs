@@ -351,12 +351,23 @@ impl App {
     }
 
     fn go_to_file_list(&mut self) {
-        self.app_state = AppState::FileList(FileListMenu::new());
-        self.common.items = self.file_list.iter().map(|f| f.filename.clone()).collect();
-        self.common.state = ListState::default();
+        match &self.app_state {
+            AppState::FileList(_) => {}
+            AppState::TextView(view_menu) => {
+                let mut new_file_menu = FileListMenu::new();
+                for file in &view_menu.files {
+                    new_file_menu.loaded_items.insert(file.filename());
+                }
 
-        if !self.common.items.is_empty() {
-            self.common.state.select(Some(0));
+                self.app_state = AppState::FileList(new_file_menu);
+
+                self.common.items = self.file_list.iter().map(|f| f.filename.clone()).collect();
+                self.common.state = ListState::default();
+
+                if !self.common.items.is_empty() {
+                    self.common.state.select(Some(0));
+                }
+            }
         }
     }
 
