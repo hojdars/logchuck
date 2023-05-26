@@ -10,6 +10,7 @@ mod test;
 pub struct FileWithLines {
     text: String,
     line_breaks: Vec<usize>,
+    filename: String,
 }
 
 impl<'text> FileWithLines {
@@ -30,6 +31,10 @@ impl<'text> FileWithLines {
 
     pub fn len(&self) -> usize {
         self.line_breaks.len() - 2
+    }
+
+    pub fn filename(&self) -> String {
+        self.filename.clone()
     }
 
     pub async fn from_files(files: Vec<String>) -> Vec<FileWithLines> {
@@ -90,5 +95,9 @@ fn get_line_breaks(text_str: &String) -> Vec<usize> {
 async fn load_file(path: String) -> FileWithLines {
     let text = read_file_to_string(&path);
     let line_breaks: Vec<usize> = get_line_breaks(&text);
-    FileWithLines { text, line_breaks }
+    FileWithLines {
+        text,
+        line_breaks,
+        filename: path,
+    }
 }
