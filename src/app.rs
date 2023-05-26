@@ -24,6 +24,40 @@ use super::mergeline::merge;
 use super::mergeline::Line;
 use super::text::FileWithLines;
 
+// solarized: https://ethanschoonover.com/solarized/
+const FG_COLOR: Color = Color::Rgb(147, 161, 161);
+const BG_COLOR: Color = Color::Rgb(0, 43, 54);
+const FG_ACCENT_COLOR: Color = Color::Rgb(181, 137, 0);
+const BG_ACCENT_COLOR: Color = Color::Rgb(7, 54, 66);
+const ERROR_RED_COLOR: Color = Color::Rgb(220, 50, 47);
+const WARN_YELLOW_COLOR: Color = Color::Rgb(181, 137, 0);
+
+#[derive(Clone)]
+struct FileEntry {
+    filename: String,
+    file_size: u64,
+}
+
+impl Ord for FileEntry {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.filename.cmp(&other.filename)
+    }
+}
+
+impl PartialOrd for FileEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for FileEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.filename == other.filename
+    }
+}
+
+impl Eq for FileEntry {}
+
 struct Common {
     items: VecDeque<String>,
     state: ListState,
@@ -109,7 +143,7 @@ enum AppState {
 struct App {
     common: Common,
     app_state: AppState,
-    file_list: Vec<String>,
+    file_list: Vec<FileEntry>,
     terminal_size: tui::layout::Rect,
     error: Option<String>,
 }
@@ -119,7 +153,7 @@ impl App {
         info!("App::new - new App");
         let file_list = App::scan_directory(path)?;
         let mut app = App {
-            common: Common::new(file_list.clone()),
+            common: Common::new(file_list.iter().map(|f| f.filename.clone()).collect()),
             app_state: AppState::FileList(FileListMenu::new()),
             file_list,
             terminal_size: size,
@@ -133,13 +167,14 @@ impl App {
         Ok(app)
     }
 
-    fn scan_directory(path: &std::path::Path) -> Result<Vec<String>, std::io::Error> {
-        let mut result: Vec<String> = Vec::new();
+    fn scan_directory(path: &std::path::Path) -> Result<Vec<FileEntry>, std::io::Error> {
+        let mut result: Vec<FileEntry> = Vec::new();
         for item in std::fs::read_dir(path)? {
             let item_path = item?.path();
             if !item_path.is_file() || item_path.file_name().is_none() {
                 continue;
             }
+            let metadata = std::fs::metadata(item_path.clone())?;
             match item_path.file_name().unwrap().to_os_string().into_string() {
                 Ok(file) => {
                     if file.as_bytes()[0] != b'.' {
@@ -147,7 +182,14 @@ impl App {
                             .join(std::path::Path::new(&file))
                             .canonicalize()
                             .unwrap();
-                        result.push(fullpath.as_os_str().to_os_string().into_string().unwrap())
+
+                        if metadata.len() == 0 {
+                            continue;
+                        }
+                        result.push(FileEntry {
+                            filename: fullpath.as_os_str().to_os_string().into_string().unwrap(),
+                            file_size: metadata.len(),
+                        });
                     }
                 }
                 Err(err_file) => {
@@ -310,7 +352,7 @@ impl App {
 
     fn go_to_file_list(&mut self) {
         self.app_state = AppState::FileList(FileListMenu::new());
-        self.common.items = self.file_list.clone().into();
+        self.common.items = self.file_list.iter().map(|f| f.filename.clone()).collect();
         self.common.state = ListState::default();
 
         if !self.common.items.is_empty() {
@@ -411,14 +453,6 @@ impl App {
 fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     let size = f.size();
 
-    // solarized: https://ethanschoonover.com/solarized/
-    let fg_color = Color::Rgb(147, 161, 161);
-    let bg_color = Color::Rgb(0, 43, 54);
-    let fg_accent_color = Color::Rgb(181, 137, 0);
-    let bg_accent_color = Color::Rgb(7, 54, 66);
-    let error_red_color = Color::Rgb(220, 50, 47);
-    let warn_yellow_color = Color::Rgb(181, 137, 0);
-
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(2), Constraint::Min(0)].as_ref())
@@ -426,7 +460,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
     let bl = Block::default()
         .borders(Borders::NONE)
-        .style(Style::default().bg(bg_color).fg(fg_color));
+        .style(Style::default().bg(BG_COLOR).fg(FG_COLOR));
     f.render_widget(bl, chunks[0]);
 
     let mid_menu_row = Layout::default()
@@ -447,7 +481,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .map(|t| {
             Spans::from(Span::styled(
                 t,
-                Style::default().fg(fg_color).add_modifier(Modifier::BOLD),
+                Style::default().fg(FG_COLOR).add_modifier(Modifier::BOLD),
             ))
         })
         .collect();
@@ -460,32 +494,15 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     let tabs = Tabs::new(titles)
         .block(Block::default().borders(Borders::NONE))
         .select(selected_tab)
-        .style(Style::default().bg(bg_color).fg(fg_color))
-        .highlight_style(Style::default().bg(bg_accent_color).fg(fg_accent_color));
+        .style(Style::default().bg(BG_COLOR).fg(FG_COLOR))
+        .highlight_style(Style::default().bg(BG_ACCENT_COLOR).fg(FG_ACCENT_COLOR));
 
     f.render_widget(tabs, mid_menu_center[1]);
 
     app.terminal_size = chunks[1];
 
     let list_items: Vec<ListItem> = match &mut app.app_state {
-        AppState::FileList(file_list) => app
-            .common
-            .items
-            .iter()
-            .map(|i| {
-                let loaded_marker = if file_list.loaded_items.contains(&App::to_abs_path(i)) {
-                    "x"
-                } else {
-                    " "
-                };
-                ListItem::new(Span::from(format!(
-                    "[{}] {}",
-                    loaded_marker,
-                    String::from_str(Path::new(i).file_name().unwrap().to_str().unwrap()).unwrap()
-                )))
-                .style(Style::default().fg(fg_color).bg(bg_color))
-            })
-            .collect(),
+        AppState::FileList(file_list) => generate_file_list(&app.file_list, file_list),
         AppState::TextView(_) => app
             .common
             .items
@@ -494,11 +511,11 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
                 let style: Style;
                 let line = String::from(i);
                 if line.contains("ERROR") {
-                    style = Style::default().fg(error_red_color).bg(bg_color);
+                    style = Style::default().fg(ERROR_RED_COLOR).bg(BG_COLOR);
                 } else if line.contains("WARN") {
-                    style = Style::default().fg(warn_yellow_color).bg(bg_color);
+                    style = Style::default().fg(WARN_YELLOW_COLOR).bg(BG_COLOR);
                 } else {
-                    style = Style::default().fg(fg_color).bg(bg_color);
+                    style = Style::default().fg(FG_COLOR).bg(BG_COLOR);
                 }
                 ListItem::new(Span::from(line)).style(style)
             })
@@ -509,9 +526,9 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .block(
             Block::default()
                 .borders(Borders::TOP)
-                .style(Style::default().bg(bg_color)),
+                .style(Style::default().bg(BG_COLOR)),
         )
-        .highlight_style(Style::default().fg(fg_accent_color).bg(bg_accent_color));
+        .highlight_style(Style::default().fg(FG_ACCENT_COLOR).bg(BG_ACCENT_COLOR));
 
     f.render_stateful_widget(list, chunks[1], &mut app.common.state);
 
@@ -523,11 +540,67 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         let text = error_text.to_owned() + "\n\nPress 'Esc' to close this popup";
 
         let paragraph = Paragraph::new(text)
-            .style(Style::default().bg(bg_accent_color).fg(fg_accent_color))
+            .style(Style::default().bg(BG_ACCENT_COLOR).fg(FG_ACCENT_COLOR))
             .block(block)
             .alignment(Alignment::Left);
         f.render_widget(paragraph, area);
     }
+}
+
+fn generate_file_list<'a>(
+    app_file_list: &'a Vec<FileEntry>,
+    file_list: &FileListMenu,
+) -> Vec<ListItem<'a>> {
+    let mut max_filename_len: usize = 0;
+    for f in app_file_list {
+        let filename_string: String = String::from_str(
+            Path::new(&f.filename)
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap(),
+        )
+        .unwrap();
+
+        if filename_string.len() > max_filename_len {
+            max_filename_len = filename_string.len();
+        }
+    }
+
+    max_filename_len += 5;
+
+    app_file_list
+        .iter()
+        .map(|i| {
+            let loaded_marker = if file_list
+                .loaded_items
+                .contains(&App::to_abs_path(&i.filename))
+            {
+                "x"
+            } else {
+                " "
+            };
+            let mut filename_string = String::from_str(
+                Path::new(&i.filename)
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap(),
+            )
+            .unwrap();
+            if filename_string.len() < max_filename_len {
+                filename_string +=
+                    String::from_utf8(vec![b' '; max_filename_len - filename_string.len()])
+                        .unwrap()
+                        .as_str();
+            }
+            ListItem::new(Span::from(format!(
+                "[{}] {} ({} B)",
+                loaded_marker, filename_string, i.file_size
+            )))
+            .style(Style::default().fg(FG_COLOR).bg(BG_COLOR))
+        })
+        .collect()
 }
 
 pub fn run_app(folder_to_run: &String) -> Result<(), io::Error> {
