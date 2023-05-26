@@ -236,7 +236,6 @@ impl App {
                 self.common.state.select(Some(i));
             }
         }
-        assert!(self.common.items.len() <= self.terminal_size.height as usize);
     }
 
     fn select_previous(&mut self) {
@@ -270,7 +269,6 @@ impl App {
                 self.common.state.select(Some(i));
             }
         }
-        assert!(self.common.items.len() <= self.terminal_size.height as usize);
     }
 
     fn flip_current(&mut self) {
