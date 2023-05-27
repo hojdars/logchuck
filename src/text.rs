@@ -1,6 +1,6 @@
 use crate::mergeline::Line;
 use crate::timestamp::*;
-use std::fs;
+use std::{fs, path::Path};
 use tokio::task::JoinSet;
 
 #[cfg(test)]
@@ -16,7 +16,11 @@ pub struct FileWithLines {
 impl<'text> FileWithLines {
     pub fn get_ith_line(&self, i: usize) -> Result<&str, LineError> {
         match self.line_breaks.len().cmp(&(i + 1)) {
-            std::cmp::Ordering::Less => return Err(LineError {}),
+            std::cmp::Ordering::Less => {
+                return Err(LineError {
+                    error_message: String::from("no such line"),
+                })
+            }
             std::cmp::Ordering::Equal => return Ok(&self.text[self.line_breaks[i]..]),
             std::cmp::Ordering::Greater => {}
         }
@@ -57,15 +61,33 @@ impl<'text> FileWithLines {
         let mut result: Vec<Line> = Vec::new();
         for i in 0..self.len() {
             let line = self.get_ith_line(i)?;
-            let timestamp =
-                parse_timestamp_utc(&get_timestamp_from_line(line)?)?.timestamp_micros();
-            result.push(Line {
-                timestamp,
-                source_file: source_file_index,
-                index: i,
-            });
+            match get_timestamp_from_line(line) {
+                Ok(timestamp) => {
+                    result.push(Line {
+                        timestamp: timestamp.timestamp_micros(),
+                        source_file: source_file_index,
+                        index: i,
+                    });
+                }
+                Err(_) => continue,
+            }
         }
-        Ok(result)
+
+        if result.is_empty() {
+            let filename_string: String = String::from(
+                Path::new(&self.filename)
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap(),
+            );
+
+            Err(LineError {
+                error_message: format!("found no timestamps in file={}", filename_string),
+            })
+        } else {
+            Ok(result)
+        }
     }
 }
 
