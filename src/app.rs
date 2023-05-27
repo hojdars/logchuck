@@ -14,7 +14,7 @@ use tui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Tabs},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Tabs, Wrap},
     Frame, Terminal,
 };
 
@@ -89,6 +89,7 @@ impl FileListMenu {
 struct ViewMenu {
     files: Vec<FileWithLines>,
     all_lines: Vec<Line>,
+    details_dialog: Option<String>,
 }
 
 impl ViewMenu {
@@ -96,6 +97,7 @@ impl ViewMenu {
         let mut res = ViewMenu {
             files,
             all_lines: Vec::new(),
+            details_dialog: None,
         };
 
         for i in 0..res.files.len() {
@@ -138,6 +140,10 @@ impl ViewMenu {
 enum AppState {
     FileList(FileListMenu),
     TextView(ViewMenu),
+}
+
+struct AppError {
+    error_message: String,
 }
 
 struct App {
@@ -303,49 +309,76 @@ impl App {
             .unwrap()
     }
 
-    fn load_files(&mut self) {
-        match &mut self.app_state {
-            AppState::TextView(_) => {}
+    fn enter(&mut self) {
+        let result_new_state: Result<Option<AppState>, AppError> = match &mut self.app_state {
+            AppState::TextView(view) => App::show_details_dialog(
+                view,
+                self.common.items[self.common.state.selected().unwrap()].clone(),
+            ),
             AppState::FileList(file_list) => {
                 if file_list.loaded_items.is_empty() {
                     return;
+                } else {
+                    App::load_files(file_list)
                 }
+            }
+        };
 
-                let mut to_load: Vec<String> = Vec::new();
-                for lf in &file_list.loaded_items {
-                    to_load.push(lf.clone());
-                }
-
-                info!("App::load_files - preparing to load files");
-                let file_futures = Box::pin(FileWithLines::from_files(to_load));
-                let files = block_on(file_futures);
-
-                info!("App::load_files - {} files loaded", files.len());
-
-                self.app_state = match ViewMenu::new(files) {
-                    Ok(new_state) => AppState::TextView(new_state),
-                    Err(err) => {
-                        self.error = Some(format!(
-                            "App::load_files - cannot load files, error={}",
-                            err
-                        ));
-                        return;
-                    }
-                };
-
-                if let AppState::TextView(view) = &self.app_state {
-                    if !view.files.is_empty() {
-                        self.common.items =
-                            view.get_lines(0, self.terminal_size.height.into()).into();
-                        self.common.state = ListState::default();
-                        self.common.absolute_index = 0;
-                        if !self.common.items.is_empty() {
-                            self.common.state.select(Some(0));
+        match result_new_state {
+            Ok(new_state_opt) => {
+                if let Some(new_state) = new_state_opt {
+                    self.app_state = new_state;
+                    match &self.app_state {
+                        AppState::FileList(_) => {}
+                        AppState::TextView(view) => {
+                            if !view.files.is_empty() {
+                                self.common.items =
+                                    view.get_lines(0, self.terminal_size.height.into()).into();
+                                self.common.state = ListState::default();
+                                self.common.absolute_index = 0;
+                                if !self.common.items.is_empty() {
+                                    self.common.state.select(Some(0));
+                                }
+                            }
                         }
                     }
                 }
             }
+            Err(error) => {
+                self.error = Some(error.error_message);
+            }
         }
+    }
+
+    fn load_files(file_list: &mut FileListMenu) -> Result<Option<AppState>, AppError> {
+        let mut to_load: Vec<String> = Vec::new();
+        for lf in &file_list.loaded_items {
+            to_load.push(lf.clone());
+        }
+
+        info!("App::load_files - preparing to load files");
+        let file_futures = Box::pin(FileWithLines::from_files(to_load));
+        let files = block_on(file_futures);
+
+        info!("App::load_files - {} files loaded", files.len());
+
+        match ViewMenu::new(files) {
+            Ok(new_state) => Ok(Some(AppState::TextView(new_state))),
+            Err(err) => Err(AppError {
+                error_message: format!("App::load_files - cannot load files, error={}", err),
+            }),
+        }
+    }
+
+    fn show_details_dialog(
+        menu: &mut ViewMenu,
+        text: String,
+    ) -> Result<Option<AppState>, AppError> {
+        match menu.details_dialog {
+            Some(_) => menu.details_dialog = None,
+            None => menu.details_dialog = Some(text),
+        }
+        return Ok(None);
     }
 
     fn go_to_file_list(&mut self) {
@@ -551,8 +584,27 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         let paragraph = Paragraph::new(text)
             .style(Style::default().bg(BG_ACCENT_COLOR).fg(FG_ACCENT_COLOR))
             .block(block)
-            .alignment(Alignment::Left);
+            .alignment(Alignment::Left)
+            .wrap(Wrap { trim: false });
         f.render_widget(paragraph, area);
+    }
+
+    match &mut app.app_state {
+        AppState::FileList(_) => {}
+        AppState::TextView(view) => {
+            if let Some(text) = &view.details_dialog {
+                let block = Block::default().title("Popup").borders(Borders::ALL);
+                let area = centered_rect(60, 20, size);
+                f.render_widget(tui::widgets::Clear, area); //this clears out the background
+
+                let paragraph = Paragraph::new(text.clone())
+                    .style(Style::default().bg(BG_ACCENT_COLOR).fg(FG_ACCENT_COLOR))
+                    .block(block)
+                    .alignment(Alignment::Left)
+                    .wrap(Wrap { trim: false });
+                f.render_widget(paragraph, area);
+            }
+        }
     }
 }
 
@@ -635,11 +687,10 @@ pub fn run_app(folder_to_run: &String) -> Result<(), io::Error> {
                     crossterm::event::KeyCode::Char('q') => break,
                     crossterm::event::KeyCode::Char('j') => app.select_next(),
                     crossterm::event::KeyCode::Char('k') => app.select_previous(),
-                    crossterm::event::KeyCode::Char('g') => app.load_files(),
                     crossterm::event::KeyCode::Down => app.select_next(),
                     crossterm::event::KeyCode::Up => app.select_previous(),
                     crossterm::event::KeyCode::Char(' ') => app.flip_current(),
-                    crossterm::event::KeyCode::Enter => app.load_files(),
+                    crossterm::event::KeyCode::Enter => app.enter(),
                     crossterm::event::KeyCode::Backspace => app.go_to_file_list(),
                     crossterm::event::KeyCode::PageUp => app.page_up(),
                     crossterm::event::KeyCode::PageDown => app.page_down(),

@@ -1,6 +1,6 @@
 use crate::mergeline::Line;
 use crate::timestamp::*;
-use std::{fs, path::Path};
+use std::fs;
 use tokio::task::JoinSet;
 
 #[cfg(test)]
@@ -74,16 +74,8 @@ impl<'text> FileWithLines {
         }
 
         if result.is_empty() {
-            let filename_string: String = String::from(
-                Path::new(&self.filename)
-                    .file_name()
-                    .unwrap()
-                    .to_str()
-                    .unwrap(),
-            );
-
             Err(LineError {
-                error_message: format!("found no timestamps in file={}", filename_string),
+                error_message: format!("found no timestamps in file={}", self.filename),
             })
         } else {
             Ok(result)
